@@ -10,3 +10,4 @@ inputs = {
   environment = get_env("PR_ENVIRONMENT", "local-test")
   bucket_name = "myapp"
 }
+# test trigger
