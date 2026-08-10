@@ -1,0 +1,67 @@
+name: Ephemeral Test Environment
+
+on:
+  pull_request:
+    branches: [main]
+
+# ป้องกัน 2 run ของ PR เดียวกันชนกัน (เช่น push ใหม่ระหว่าง run เก่ายังไม่จบ)
+concurrency:
+  group: ephemeral-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  ephemeral-test:
+    runs-on: ubuntu-latest
+
+    # รัน MiniStack เป็น service container คู่กับ job
+    # GitHub Actions จะ start/stop ให้อัตโนมัติตาม job lifecycle
+    services:
+      ministack:
+        image: ministackorg/ministack:latest
+        ports:
+          - 4566:4566
+        options: >-
+          --health-cmd "curl -f http://localhost:4566/_ministack/health"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
+    env:
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: us-east-1
+      # ทำให้แต่ละ PR ได้ environment name ไม่ชนกัน
+      PR_ENVIRONMENT: pr-${{ github.event.pull_request.number }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+
+      - name: Setup Terragrunt
+        run: |
+          curl -Lo terragrunt https://github.com/gruntwork-io/terragrunt/releases/latest/download/terragrunt_linux_amd64
+          chmod +x terragrunt
+          sudo mv terragrunt /usr/local/bin/
+
+      - name: Terragrunt Apply
+        working-directory: tf-lesson-4/envs/ci
+        run: terragrunt apply -auto-approve
+
+      - name: Run integration tests
+        working-directory: tf-lesson-4/envs/ci
+        run: |
+          # ตัวอย่าง: verify ว่า bucket/queue ถูกสร้างจริงผ่าน AWS CLI
+          aws --endpoint-url=http://localhost:4566 s3 ls | grep "myapp-${PR_ENVIRONMENT}"
+          aws --endpoint-url=http://localhost:4566 sqs list-queues | grep "app-tasks-${PR_ENVIRONMENT}"
+
+      # 'if: always()' คือหัวใจของ ephemeral pattern —
+      # รันขั้นตอนนี้เสมอไม่ว่า step ก่อนหน้าจะ pass หรือ fail
+      - name: Terragrunt Destroy (always cleanup)
+        if: always()
+        working-directory: tf-lesson-4/envs/ci
+        run: terragrunt destroy -auto-approve
