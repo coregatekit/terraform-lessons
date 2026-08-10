@@ -20,11 +20,6 @@ jobs:
         image: ministackorg/ministack:latest
         ports:
           - 4566:4566
-        options: >-
-          --health-cmd "curl -f http://localhost:4566/_ministack/health"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 5
 
     env:
       AWS_ACCESS_KEY_ID: test
@@ -47,6 +42,17 @@ jobs:
           curl -Lo terragrunt https://github.com/gruntwork-io/terragrunt/releases/latest/download/terragrunt_linux_amd64
           chmod +x terragrunt
           sudo mv terragrunt /usr/local/bin/
+
+      - name: Wait for MiniStack to be ready
+        run: |
+          for i in {1..15}; do
+            if (echo > /dev/tcp/localhost/4566) 2>/dev/null; then
+              echo "MiniStack port is open"
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
 
       - name: Terragrunt Apply
         working-directory: tf-lesson-4/envs/ci
