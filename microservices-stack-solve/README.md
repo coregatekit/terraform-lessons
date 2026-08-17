@@ -4,9 +4,59 @@ Reference infra for a microservices stack: web + mobile clients → API Gateway 
 EKS (4 microservices) → RDS (Postgres) + ElastiCache (Redis), with S3 for
 assets/documents. Built as reusable modules + a Terragrunt-composed dev stack.
 
+## Microservices Stack — Architecture Diagram
+
+```mermaid
+flowchart TD
+    Web[Web app]
+    Mobile[Mobile app]
+    APIGW[API Gateway]
+
+    Web --> APIGW
+    Mobile --> APIGW
+
+    subgraph VPC["VPC · 10.0.0.0/16"]
+        NAT[NAT Gateway]
+
+        subgraph AppSubnet["Private-app subnet"]
+            EKS[EKS Cluster<br/>4 microservices]
+        end
+
+        subgraph DataSubnet["Private-data subnet"]
+            RDS[(RDS<br/>PostgreSQL)]
+            Redis[(ElastiCache<br/>Redis)]
+        end
+
+        EKS -->|outbound traffic| NAT
+    end
+
+    APIGW -->|VPC Link| EKS
+    EKS --> RDS
+    EKS --> Redis
+
+    ECR[ECR<br/>image registry]
+    S3[(S3<br/>assets & documents)]
+    CW[CloudWatch<br/>Container Insights + alarms]
+    SNS[SNS<br/>alerts]
+
+    EKS -.pulls images.-> ECR
+    EKS --> S3
+    EKS -.metrics/logs.-> CW
+    RDS -.alarms.-> CW
+    Redis -.alarms.-> CW
+    CW -->|on alarm| SNS
+```
+
+## Legend
+
+- **Solid arrows** — request/data flow (synchronous)
+- **Dashed arrows** — telemetry, image pulls, or alerting (not part of the request path)
+- **VPC subgraph** — everything inside runs in private subnets with no direct internet exposure; only NAT Gateway provides outbound-only internet access
+- **S3 and ECR** — AWS-managed services that live outside the VPC by design, reached via IAM + (for S3) a VPC Gateway Endpoint
+
 ## Structure
 
-```
+```tree
 microservices-stack/
 ├── root.hcl                      # Terragrunt root — generates provider config
 ├── modules/
@@ -31,7 +81,7 @@ To add a `prod` environment: copy `envs/dev/` to `envs/prod/`, change
 ## What each module owns
 
 | Module | Creates | Depends on |
-|---|---|---|
+| --- | --- | --- |
 | `networking` | VPC, public/private-app/private-data subnets, IGW, NAT, route tables, S3 gateway endpoint, security groups | — |
 | `eks` | EKS control plane, managed node group, IAM roles, OIDC provider for IRSA | `networking` |
 | `rds` | Postgres instance in the data subnets | `networking` |
