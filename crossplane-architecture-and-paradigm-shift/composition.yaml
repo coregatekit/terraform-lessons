@@ -1,0 +1,36 @@
+# Composition - recipe ที่แปลง XR เป็น Managed Resources จริง
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: xpostgresqlinstances.platform.acme.io
+  labels:
+    provider: aws
+spec:
+  compositeTypeRef:
+    apiVersion: platform.acme.io/v1alpha1
+    kind: XPostgreSQLInstance
+  resources:
+    - name: rdsinstance
+      base:                                           # << template ของ MR ที่จะสร้างจริง
+        apiVersion: rds.aws.upbound.io/v1beta1
+        kind: Instance
+        spec:
+          forProvider:
+            region: ap-southeast-1
+            instanceClass: db.t3.micro
+            engine: postgres
+            storageEncrypted: true                    # << standard ที่ enforce เอง
+            backupRetentionPeriod: 7
+            skipFinalSnapshot: true
+          providerConfigRef:
+            name: aws-provider-config
+      patches:                                         # << mapping จาก XR field ไป MR field
+        - type: FromCompositeFieldPath                 # ดึงค่าจาก XR spec.parameters เข้า MR
+          fromFieldPath: spec.parameters.storageGB
+          toFieldPath: "spec.forProvider.allocatedStorage"
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.engineVersion
+          toFieldPath: "spec.forProvider.engineVersion"
+        - type: ToCompositeFieldPath                  # ดึงค่ากลับขึ้นไปที่ XR status (เช่น endpoint ของ DB)
+          fromFieldPath: status.atProvider.endpoint
+          toFieldPath: status.address
