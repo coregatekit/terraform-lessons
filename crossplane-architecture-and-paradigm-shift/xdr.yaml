@@ -1,0 +1,34 @@
+# XRD (CompositeResourceDefinition) นิยาม schema ของ API ใหม่
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: xpostgresqlinstances.platform.acme.io # ต้องเป็น <plural>.<group>
+spec:
+  group: platform.acme.io                     # namespace ของ API group
+  names:
+    kind: XPostgreSQLInstance                 # XR kind (cluster-scoped)
+    plural: xpostgresqlinstances
+  claimNames:
+    kind: PostgreSQLInstance                  # Claim kind (namespaced) ที่ dev team ใช้จริง
+    plural: postgresqlinstances
+  versions:
+    - name: v1alpha1
+      referenceable: true
+      served: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                parameters:                   # << field ที่ dev team กรอกได้
+                  type: object
+                  properties:
+                    storageGB:
+                      type: integer
+                    engineVersion:
+                      type: string
+                      default: "15"
+                  required:
+                    - storageGB
